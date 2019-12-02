@@ -39,6 +39,61 @@ fredr_set_key("84efd638e2db29ef758e0d8e081a4c05")
 
 # Daten
 
+Zwei Quellen: FRED (Zinsstrukturkurve und NBER-Rezessionsindikator) und New York Fed (term premium)
+
+```{r}
+# load yield curve data and recession indicator from FRED #################
+data_fred_raw <-map_dfr(c("USREC", "GS10", "TB3MS"), fredr)
+
+# filter sample
+data_fred <- data_fred_raw %>% spread(series_id, value) %>% 
+                           rename(i10y = GS10, i3m = TB3MS, nber_rec = USREC) %>%
+                           filter(date >= "1950-01-01") %>% 
+                           mutate(spr_10y_3m = i10y - i3m)
+
+
+# load term spread data from NY Fed ################
+data_nyfed_raw <- read.table("ACMTermPremium.csv", 
+                   header = TRUE, 
+                   sep = ";", 
+                   blank.lines.skip = FALSE)
+
+data_nyfed_raw$DATE <- dmy(data_nyfed_raw$DATE)
+
+# select term premium on 10 year bond
+data_nyfed <- data_nyfed_raw %>% rename(date = DATE, tp_d = ACMTP10) %>%
+                            select(date, tp_d) %>% 
+                            mutate(yy = year(date), mm = month(date)) %>%
+                            group_by(yy, mm) %>%
+                            summarise(tp = round(mean(tp_d),2)) %>%
+                            ungroup() %>% 
+                            mutate(date = make_date(year = yy, month = mm)) %>%
+                            select(-yy, -mm) %>%
+                            select(date, tp)
+
+# merge two datasets and create term-premium adjusted spread ########
+data <- merge(data_fred, data_nyfed, by = "date") %>% mutate(i10y_tp = i10y - tp,
+                                                             spr_tp = i10y - tp - i3m)
+ 
+ # convert to quarterly frequency ####################
+ dataQ <- data %>% gather(variable, value, -date) %>% 
+                  mutate(yy = year(date), qq = ceiling(month(date)/3)) %>%
+                  group_by(yy, qq, variable) %>%
+                  summarise(tmp = mean(value)) %>%
+                  spread(variable, tmp) %>%
+                  ungroup() %>% 
+                  mutate(date = make_date(year = yy, month = 3*qq),
+                         nber_rec = round(nber_rec,0)) %>%
+                  select(-yy, -qq) %>%
+                  select(date, everything()) 
+```
+
+## Zinsstrukturkurve
+
+## NBER-Rezessionsindikator
+
+## Laufzeitprämien
+
 # Schätzung
 
 # Evaluierung
