@@ -3,7 +3,7 @@ options(scipen = 999)
 
 # libraries
 library(fredr)
-fredr_set_key # set API key
+fredr_set_key("84efd638e2db29ef758e0d8e081a4c05") # set API key
 library(purrr)
 library(ggplot2)
 library(tidyr)
