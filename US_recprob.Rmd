@@ -1,0 +1,46 @@
+---
+title: "USA Rezessionswahrscheinlichkeit"
+author: "Philipp Hauber"
+date: "2 12 2019"
+output: html_document
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=8, fig.height=6, #fig.path='Figs/',
+                      echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+# clear workspace
+rm(list = ls())
+
+# turn off scientific notation
+options(scipen = 999)
+
+# working directory
+setwd("C:/Users/Philipp/Documents/GitHub/US-term-spread-rec-prob")
+
+# libraries
+library(fredr)
+library(purrr)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(lubridate)
+
+# set API key for FRED
+fredr_set_key("84efd638e2db29ef758e0d8e081a4c05")
+```
+
+
+# Motivation
+
+# Literatur
+
+# Daten
+
+# Schätzung
+
+# Evaluierung
+
+
