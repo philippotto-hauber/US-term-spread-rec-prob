@@ -79,14 +79,27 @@ ggplot(dataQ, aes(x = date))+
 
 # estimate probit model #################################
 
-model_probit <- glm(nber_rec ~ spr_10y_3m, 
+
+
+dataQ_tmp <- dataQ %>% select(date, nber_rec, spr_10y_3m, spr_10y_3m_termprem) %>%
+                       mutate(lag_spr_10y_3m = lag(spr_10y_3m, 4),
+                              lag_spr_10y_3m_termprem = lag(spr_10y_3m_termprem, 4))
+
+dataQ_estim <- dataQ_tmp %>% filter(date <= "2006-12-01")
+dataQ_eval <- dataQ_tmp %>% filter(date > "2006-12-01")
+
+model_probit <- glm(nber_rec ~ lag_spr_10y_3m, 
                     family = binomial(link = "probit"), 
-                    data = dataQ)
+                    data = dataQ_estim)
 coefficients(model_probit)
 
-model_probit_termprem <- glm(nber_rec ~ spr_10y_3m_termprem, 
+fore <- predict(model_probit, dataQ_eval, type = "response")
+
+model_probit_termprem <- glm(nber_rec ~ lag_spr_10y_3m_termprem, 
                              family = binomial(link = "probit"), 
-                             data = dataQ)
+                             data = dataQ_estim)
+
+fore_termprem <- predict(model_probit_termprem, dataQ_eval, type = "response")
 
 coefficients(model_probit_termprem)
 
