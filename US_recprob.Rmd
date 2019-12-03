@@ -18,7 +18,8 @@ rm(list = ls())
 options(scipen = 999)
 
 # working directory
-setwd("C:/Users/Philipp/Documents/GitHub/US-term-spread-rec-prob")
+#setwd("C:/Users/Philipp/Documents/GitHub/US-term-spread-rec-prob")
+setwd("C:/Users/Hauber/Documents/GitHub/US-term-spread-rec-prob")
 
 # libraries
 library(fredr)
@@ -39,17 +40,26 @@ fredr_set_key("84efd638e2db29ef758e0d8e081a4c05")
 
 # Daten
 
-Zwei Quellen: FRED (Zinsstrukturkurve und NBER-Rezessionsindikator) und New York Fed (term premium)
-
 ```{r}
-# load yield curve data and recession indicator from FRED #################
-data_fred_raw <-map_dfr(c("USREC", "GS10", "TB3MS"), fredr)
+# load yield curve data, recession indicator and Fed Board term premium from FRED #################
+var_mnemonic <- c("USREC", "GS10", "TB3MS", "THREEFYTP10")
+var_names <- c("nber_rec", "i10y", "i3m", "tp_board")
+data_fred <- data.frame()
+for (i in 1 : length(varnames)) {
+    tmp <- fredr(series_id = var_mnemonic[i], 
+                                 observation_start = as.Date("1950-01-01"),
+                                 frequency = "q", 
+                                 aggregation_method = "avg"
+                 )
+    
+    tmp[, "series_id"] <- var_names[i]
+    
+    data_fred <- rbind(data_fred, tmp)
+}
 
-# filter sample
-data_fred <- data_fred_raw %>% spread(series_id, value) %>% 
-                           rename(i10y = GS10, i3m = TB3MS, nber_rec = USREC) %>%
-                           filter(date >= "1950-01-01") %>% 
-                           mutate(spr_10y_3m = i10y - i3m)
+ggplot(filter(data_fred_raw, series_id == "nber_rec"), aes(x = date, y = value, group = series_id))+
+        geom_line()
+
 
 
 # load term spread data from NY Fed ################
@@ -65,15 +75,27 @@ data_nyfed <- data_nyfed_raw %>% rename(date = DATE, tp_d = ACMTP10) %>%
                             select(date, tp_d) %>% 
                             mutate(yy = year(date), mm = month(date)) %>%
                             group_by(yy, mm) %>%
-                            summarise(tp = round(mean(tp_d),2)) %>%
+                            summarise(tp_ny = round(mean(tp_d),2)) %>%
                             ungroup() %>% 
                             mutate(date = make_date(year = yy, month = mm)) %>%
                             select(-yy, -mm) %>%
-                            select(date, tp)
+                            select(date, tp_ny)
+
+# load term spread data from SF Fed ################
+data_sffed_raw <- read.table("FRBSF_Term_Model_Data.csv", 
+                   header = TRUE, 
+                   sep = ";", 
+                   blank.lines.skip = FALSE)
+
+data_sffed_raw$DATE <- dmy(data_sffed_raw$DATE)
+
+
+
+
 
 # merge two datasets and create term-premium adjusted spread ########
-data <- merge(data_fred, data_nyfed, by = "date") %>% mutate(i10y_tp = i10y - tp,
-                                                             spr_tp = i10y - tp - i3m)
+data <- merge(data_fred, data_nyfed, by = "date") %>% mutate(i10y_tp_ny = i10y - tp_ny,
+                                                             spr_tp_ny = i10y - tp_ny - i3m)
  
  # convert to quarterly frequency ####################
  dataQ <- data %>% gather(variable, value, -date) %>% 
