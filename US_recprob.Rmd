@@ -101,7 +101,8 @@ data_nyfed <- data_nyfed_raw %>% rename(date = DATE, tp_d = ACMTP10) %>%
 # merge two datasets and create term-premium adjusted spread ########
 data <- merge(spread(data_fred, series_id, value), data_nyfed, by = "date") %>% 
                 mutate(i10y_tp_ny = i10y - tp_ny,
-                       spr_tp_ny = i10y - tp_ny - i3m) %>%
+                       spr = i10y - i3m,
+                       spr_tp = i10y - tp_ny - i3m) %>%
                 gather(variable, value, -date)
 
 ```
@@ -133,11 +134,105 @@ data %>% filter(variable %in% c("tp_ny", "tp_board")) %>%
 
 # Schätzung
 
-## Probit-Modell
+## Probit-Modelle
+
+$$rec_{t+h} = \alpha_0 + \alpha_1 spread_{t} + e_t$$
 
 Drei Spezifikationen **ZK** (Zinstrukturkurve), **ZK_TP** (Zinsstrukturkurve + Laufzeitprämie), **ZK_TP_t** (Zinstrukturkurve + Laufzeitprämie + Trend)
 
+```{r}
+# Nh <- 4 # forecast horizon
+# date_eval <- "2015-10-01"
+# 
+# data_tmp <- data %>% filter(variable %in% c("nber_rec", "spr", "spr_tp", "tp_ny"),
+#                             date <= date_eval) %>%
+#                             select(date, variable, value) %>%
+#                             spread(variable, value) %>%
+#                             mutate(lag_spr = lag(spr, Nh),
+#                                    lag_spr_tp = lag(spr_tp, Nh),
+#                                    lag_tp = lag(tp_ny, Nh),
+#                                    trend = 1 : n()
+#                                    )
+# 
+# 
+# data_estim <- data_tmp %>% filter(date < date_eval)
+# data_eval <- data_tmp %>% filter(date == date_eval)
+# 
+# zk <- glm(nber_rec ~ lag_spr, 
+#                     family = binomial(link = "probit"), 
+#                     data = data_estim)
+# 
+# zk_tp <- glm(nber_rec ~ lag_spr + lag_tp, 
+#                     family = binomial(link = "probit"), 
+#                     data = data_estim)
+# 
+# zk_tp_t <- glm(nber_rec ~ lag_spr + lag_tp + trend, 
+#                     family = binomial(link = "probit"), 
+#                     data = data_estim)
+# 
+# forecasts <- data.frame(fore_zk = predict(zk, data_eval, type = "response"),
+#                         fore_zk_tp = predict(zk_tp, data_eval, type = "response"),
+#                         fore_zk_tp_t = predict(zk_tp_t, data_eval, type = "response"),
+#                         actual = data_eval$nber_rec,
+#                         date = data_eval$date)
+```
 
-# Evaluierung
 
+## Set-up
+
+```{r, echo = TRUE}
+Nh <- 4 # forecast horizon
+sample_start <- "1962-01-01"
+eval_start <- "1978-01-01"
+eval_end <- "2017-10-01"
+```
+
+## Results
+
+```{r}
+df_fore <- data.frame()
+
+for (date_eval in seq(from = as.Date(eval_start), to = as.Date(eval_end), by = "quarters"))  {
+    # data 
+    data_tmp <- data %>% filter(variable %in% c("nber_rec", "spr", "spr_tp", "tp_ny"),
+                                date <= date_eval, date > sample_start) %>%
+                            select(date, variable, value) %>%
+                            spread(variable, value) %>%
+                            mutate(lag_spr = lag(spr, Nh),
+                                   lag_spr_tp = lag(spr_tp, Nh),
+                                   lag_tp = lag(tp_ny, Nh),
+                                   trend = 1 : n()
+                                   )
+    
+    data_estim <- data_tmp %>% filter(date < date_eval)
+    data_eval <- data_tmp %>% filter(date == date_eval)
+    
+    # models
+    zk <- glm(nber_rec ~ lag_spr, 
+                    family = binomial(link = "probit"), 
+                    data = data_estim)
+
+    zk_tp <- glm(nber_rec ~ lag_spr + lag_tp, 
+                        family = binomial(link = "probit"), 
+                        data = data_estim)
+    
+    zk_tp_t <- glm(nber_rec ~ lag_spr + lag_tp + trend, 
+                        family = binomial(link = "probit"), 
+                        data = data_estim)
+    
+    # forecasts
+    df_fore <- rbind(df_fore,
+                       data.frame(fore_zk = round(predict(zk, data_eval, type = "response"), 3),
+                                  fore_zk_tp = round(predict(zk_tp, data_eval, type = "response"), 3),
+                                  fore_zk_tp_t = round(predict(zk_tp_t, data_eval, type = "response"), 3),
+                                  actual = data_eval$nber_rec,
+                                  date = data_eval$date)
+                       )
+}
+
+df_fore %>% select(date, fore_zk, fore_zk_tp, fore_zk_tp_t) %>%
+            gather(model, value, -date) %>% 
+            ggplot(aes(x = date, y = value, group = model, col = model))+
+            geom_line()
+```
 
