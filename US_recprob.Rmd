@@ -104,17 +104,17 @@ dataQ <- dataM %>% filter(variable %in% c("i10y", "i3m", "nber_rec", "tp_ny")) %
 
 # different recession definition t : t+3
 tmp <- dataQ %>% spread(variable, value) %>%
-                 select(nber_rec) %>%
+                 select(date, nber_rec) %>%
                  mutate(lead1 = lead(nber_rec, 1),
                         lead2 = lead(nber_rec, 2),
                         lead3 = lead(nber_rec, 3)
                         )
 
-tmp2 <- as.matrix(tmp)
+tmp2 <- as.matrix(select(tmp, -date))
 tmp3 <- matrix(0, nrow(tmp2), 1)
 tmp3[apply(tmp2 == 1, c(1), any)] <- 1
 
-dataQ$nber_rec2 <- tmp3
+dataQ <- rbind(dataQ, data.frame(variable = "nber_rec2", value = tmp3, date = tmp$date)) 
 
 # dataframe with start and end of recession => used for recession shading
 data_tmp <- dataM %>% filter(variable == "nber_rec") %>% 
@@ -170,23 +170,24 @@ dataM %>% filter(variable %in% c("tp_ny", "tp_board")) %>%
 
 
 ```{r}
-Nh <- 12
+Nh <- 4
 data_tmp <- 
 
 # add rows 
-data_add <- data.frame(date = seq(from = dataM$date[nrow(dataM)] %m+% months(1), 
-                                  by = "months", 
+data_add <- data.frame(date = seq(from = dataQ$date[nrow(dataQ)] %m+% months(3), 
+                                  by = "quarters", 
                                   length.out = Nh
                                   ),
                        spr = rep(NA, Nh),
                        tp_ny = rep(NA, Nh),
-                       nber_rec = rep(NA, Nh)
+                       nber_rec = rep(NA, Nh),
+                       nber_rec2 = rep(NA, Nh)
                        )
 
-data_tmp <- dataM %>% filter(variable %in% c("nber_rec", "spr", "tp_ny")) %>%
+data_tmp <- dataQ %>% filter(variable %in% c("nber_rec", "nber_rec2", "spr", "tp_ny")) %>%
                       spread(variable, value) %>%
                       rbind(data_add) %>% 
-                      filter(date >= "1962-01-01") %>%
+                      filter(date >= "1972-01-01") %>%
                       mutate(lag_spr = lag(spr, Nh),
                             lag_tp_ny = lag(tp_ny, Nh),
                             trend = c(1 : n()),
@@ -216,8 +217,13 @@ data.frame(date = data_tmp$date,
            zk_tp_t2 = predict(zk_tp_t2, data_tmp, type = "response")
            ) %>%
     gather(model, value, -date) %>%
-    ggplot(aes(x = date, y = value, group = model, color = model))+ 
-        geom_line()
+    ggplot()+ 
+        geom_line(aes(x = date, y = value, group = model, color = model))+
+        theme_bw()+
+        geom_rect(data = filter(df_recQ, start >= "1972-01-01"),
+                  aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf),
+                  fill='grey', alpha=0.4
+                 )
 ```
 
 # Schätzung
@@ -237,8 +243,8 @@ $$rec_{t+h} = \alpha_0 + \alpha_1 (spread_{t} - tp_t) + e_t$$
 ```{r, echo = TRUE}
 Nh_q <- 4 # forecast horizon in quarters
 Nh_m <- 12 # forecast horizon in months
-sample_start <- "1962-01-01"
-eval_start <- "1982-01-01"
+sample_start <- "1972-01-01"
+eval_start <- "1985-01-01"
 eval_end <- "2017-10-01"
 ```
 
@@ -250,7 +256,7 @@ f_forecast_loop_probit <- function(data, eval_start, eval_end, freq, Nh){
 
     for (date_eval in seq(from = as.Date(eval_start), to = as.Date(eval_end), by = freq))  {
         # data 
-        data_tmp <- data %>% filter(variable %in% c("nber_rec", "spr", "spr_tp", "tp_ny"),
+        data_tmp <- data %>% filter(variable %in% c("nber_rec", "nber_rec2","spr", "spr_tp", "tp_ny"),
                                     date <= date_eval, date > sample_start) %>%
                                 select(date, variable, value) %>%
                                 spread(variable, value) %>%
