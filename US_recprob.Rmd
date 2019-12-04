@@ -230,9 +230,34 @@ for (date_eval in seq(from = as.Date(eval_start), to = as.Date(eval_end), by = "
                        )
 }
 
+data_tmp <- data %>% filter(variable == "nber_rec",  date >eval_start, date <= eval_end) %>% 
+                     mutate(ind_rec_start = lag(value) == 0 & value == 1,
+                            ind_rec_end = lag(value) == 1 & value == 0) %>%
+                     filter(ind_rec_start == TRUE | ind_rec_end == TRUE) 
+
+df_rec <- data.frame(start =  data_tmp$date[data_tmp$ind_rec_start == TRUE],
+                     end = data_tmp$date[data_tmp$ind_rec_end == TRUE])
+
+# subtract three months from end 
+# my way of finding the end of recession is actually the first quarter in which there is no longer a recession
+
+df_rec <- df_rec %>% mutate(end2 = end %m-% months(3)) %>% 
+                     select(start, end2) %>% 
+                     rename(end = end2) 
+
+# plot predicted recession probabilites and recession shading
 df_fore %>% select(date, fore_zk, fore_zk_tp, fore_zk_tp_t) %>%
             gather(model, value, -date) %>% 
-            ggplot(aes(x = date, y = value, group = model, col = model))+
-            geom_line()
+            ggplot()+
+            geom_line(aes(x = date, y = value, group = model, col = model)) +
+            theme_bw()+
+            geom_rect(data = df_rec, 
+                      aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf),
+                      fill='grey', alpha=0.4
+                     )
 ```
+
+# Evaluation
+
+## ROC curves
 
