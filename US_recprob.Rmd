@@ -257,7 +257,33 @@ df_fore %>% select(date, fore_zk, fore_zk_tp, fore_zk_tp_t) %>%
                      )
 ```
 
-# Evaluation
+# Evaluierung
 
-## ROC curves
+## ROC-Kurve
+
+```{r}
+library(pROC)
+
+roc_zk <- roc(df_fore, actual, fore_zk,
+              ret = c("roc", "coords", "all_coords"))
+
+roc_zk_tp <- roc(df_fore, actual, fore_zk_tp,
+                 ret = c("roc", "coords", "all_coords"))
+
+roc_zk_tp_t <- roc(df_fore, actual, fore_zk_tp_t,
+                   ret = c("roc", "coords", "all_coords"))
+
+ggroc(list(zk = roc_zk, zk_tp = roc_zk_tp, zk_tp_t = roc_zk_tp_t), legacy.axes = TRUE)
+```
+
+## Fläche unter der ROC-Kurve (AUC)
+
+| Modell | AUC |
+| ------ | --- | 
+| ZK | `r round(roc_zk$auc,2)` | 
+| ZK + TP | `r round(roc_zk_tp$auc,2)` | 
+| ZK + TP + trend| `r round(roc_zk_tp_t$auc,2)` | 
+
+## Bester Schwellenwert?
+
 
