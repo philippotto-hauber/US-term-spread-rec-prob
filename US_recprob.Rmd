@@ -97,10 +97,24 @@ dataQ <- dataM %>% filter(variable %in% c("i10y", "i3m", "nber_rec", "tp_ny")) %
                    spread(variable, value) %>% 
                    mutate(spr = i10y - i3m, 
                           spr_tp = i10y - tp_ny - i3m,
-                          nber_rec2 = ceiling(nber_rec)) %>% 
+                          nber_rec_tmp = ceiling(nber_rec)) %>% 
                    select(-nber_rec) %>% 
-                   rename(nber_rec = nber_rec2) %>% 
+                   rename(nber_rec = nber_rec_tmp) %>% 
                    gather(variable, value, -date)
+
+# different recession definition t : t+3
+tmp <- dataQ %>% spread(variable, value) %>%
+                 select(nber_rec) %>%
+                 mutate(lead1 = lead(nber_rec, 1),
+                        lead2 = lead(nber_rec, 2),
+                        lead3 = lead(nber_rec, 3)
+                        )
+
+tmp2 <- as.matrix(tmp)
+tmp3 <- matrix(0, nrow(tmp2), 1)
+tmp3[apply(tmp2 == 1, c(1), any)] <- 1
+
+dataQ$nber_rec2 <- tmp3
 
 # dataframe with start and end of recession => used for recession shading
 data_tmp <- dataM %>% filter(variable == "nber_rec") %>% 
