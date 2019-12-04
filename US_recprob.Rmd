@@ -171,7 +171,8 @@ $$rec_{t+h} = \alpha_0 + \alpha_1 spread_{t} + \alpha_2 tp_t + \alpha_3 t + e_t$
 ## Set-up
 
 ```{r, echo = TRUE}
-Nh <- 4 # forecast horizon
+Nh_q <- 4 # forecast horizon in quarters
+Nh_m <- 12 # forecast horizon in months
 sample_start <- "1962-01-01"
 eval_start <- "1985-01-01"
 eval_end <- "2017-10-01"
@@ -180,7 +181,7 @@ eval_end <- "2017-10-01"
 ## Ergebnisse
 
 ```{r}
-f_forecast_probit <- function(data, eval_start, eval_end, freq, Nh){
+f_forecast_loop_probit <- function(data, eval_start, eval_end, freq, Nh){
     df_fore <- data.frame()
 
     for (date_eval in seq(from = as.Date(eval_start), to = as.Date(eval_end), by = freq))  {
@@ -228,7 +229,7 @@ f_forecast_probit <- function(data, eval_start, eval_end, freq, Nh){
 ### Quartalsdaten
 
 ```{r}
-df_foreQ <- f_forecast_probit(dataQ, eval_start, eval_end, "quarters", 4)
+df_foreQ <- f_forecast_loop_probit(dataQ, eval_start, eval_end, "quarters", Nh_q)
 
 # plot predicted recession probabilites and recession shading
 df_foreQ %>% select(date, fore_zk, fore_zk_tp, fore_zk_tp_t) %>%
@@ -247,7 +248,7 @@ df_foreQ %>% select(date, fore_zk, fore_zk_tp, fore_zk_tp_t) %>%
 ## Monatsdaten
 
 ```{r}
-df_foreM <- f_forecast_probit(dataM, eval_start, eval_end, "months", 12)
+df_foreM <- f_forecast_loop_probit(dataM, eval_start, eval_end, "months", Nh_m)
 
 # plot predicted recession probabilites and recession shading
 df_foreM %>% select(date, fore_zk, fore_zk_tp, fore_zk_tp_t) %>%
