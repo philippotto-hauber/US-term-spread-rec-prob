@@ -97,7 +97,7 @@ dataQ <- dataM %>% filter(variable %in% c("i10y", "i3m", "nber_rec", "tp_ny")) %
                    spread(variable, value) %>% 
                    mutate(spr = i10y - i3m, 
                           spr_tp = i10y - tp_ny - i3m,
-                          nber_rec2 = round(nber_rec, 0)) %>% 
+                          nber_rec2 = ceiling(nber_rec)) %>% 
                    select(-nber_rec) %>% 
                    rename(nber_rec = nber_rec2) %>% 
                    gather(variable, value, -date)
@@ -154,19 +154,69 @@ dataM %>% filter(variable %in% c("tp_ny", "tp_board")) %>%
                   )
 ```
 
+
+```{r}
+Nh <- 12
+data_tmp <- 
+
+# add rows 
+data_add <- data.frame(date = seq(from = dataM$date[nrow(dataM)] %m+% months(1), 
+                                  by = "months", 
+                                  length.out = Nh
+                                  ),
+                       spr = rep(NA, Nh),
+                       tp_ny = rep(NA, Nh),
+                       nber_rec = rep(NA, Nh)
+                       )
+
+data_tmp <- dataM %>% filter(variable %in% c("nber_rec", "spr", "tp_ny")) %>%
+                      spread(variable, value) %>%
+                      rbind(data_add) %>% 
+                      filter(date >= "1962-01-01") %>%
+                      mutate(lag_spr = lag(spr, Nh),
+                            lag_tp_ny = lag(tp_ny, Nh),
+                            trend = c(1 : n()),
+                            lag_spr_tp = lag_spr - lag_tp_ny)
+
+data_estim <- data_tmp %>% filter(date <= "2007-12-01")
+
+zk <- glm(nber_rec ~ lag_spr, 
+                family = binomial(link = "probit"), 
+                data = data_estim)
+zk_tp <- glm(nber_rec ~ lag_spr_tp, 
+                family = binomial(link = "probit"), 
+                data = data_estim)
+
+zk_tp_t <- glm(nber_rec ~ lag_spr_tp + trend, 
+                family = binomial(link = "probit"), 
+                data = data_estim)
+
+zk_tp_t2 <- glm(nber_rec ~ lag_spr_tp + I(trend ^ 2), 
+                family = binomial(link = "probit"), 
+                data = data_estim)
+
+data.frame(date = data_tmp$date, 
+           zk = predict(zk, data_tmp, type = "response"),
+           zk_tp = predict(zk_tp, data_tmp, type = "response"),
+           zk_tp_t = predict(zk_tp_t, data_tmp, type = "response"),
+           zk_tp_t2 = predict(zk_tp_t2, data_tmp, type = "response")
+           ) %>%
+    gather(model, value, -date) %>%
+    ggplot(aes(x = date, y = value, group = model, color = model))+ 
+        geom_line()
+```
+
 # Schätzung
 
 ## Probit-Modelle
 
-Drei Spezifikationen
+Zwei Spezifikationen
 
 - **ZK** (Zinstrukturkurve)
-$$rec_{t+h} = \alpha_0 + \alpha_1 spread_{t} + e_t$$
+$$Pr(rec_{t+h} = 1 | \mathcal{I}_t) = \Phi(\alpha_0 + \alpha_1 \, spread_{t})$$
 
 -  **ZK_TP** (Zinsstrukturkurve + Laufzeitprämie)
-$$rec_{t+h} = \alpha_0 + \alpha_1 spread_{t} + \alpha_2 tp_t + e_t$$
-- **ZK_TP_t** (Zinstrukturkurve + Laufzeitprämie + Trend)
-$$rec_{t+h} = \alpha_0 + \alpha_1 spread_{t} + \alpha_2 tp_t + \alpha_3 t + e_t$$
+$$rec_{t+h} = \alpha_0 + \alpha_1 (spread_{t} - tp_t) + e_t$$
 
 ## Set-up
 
@@ -174,7 +224,7 @@ $$rec_{t+h} = \alpha_0 + \alpha_1 spread_{t} + \alpha_2 tp_t + \alpha_3 t + e_t$
 Nh_q <- 4 # forecast horizon in quarters
 Nh_m <- 12 # forecast horizon in months
 sample_start <- "1962-01-01"
-eval_start <- "1985-01-01"
+eval_start <- "1982-01-01"
 eval_end <- "2017-10-01"
 ```
 
@@ -204,19 +254,24 @@ f_forecast_loop_probit <- function(data, eval_start, eval_end, freq, Nh){
                         family = binomial(link = "probit"), 
                         data = data_estim)
     
-        zk_tp <- glm(nber_rec ~ lag_spr + lag_tp, 
+        zk_tp <- glm(nber_rec ~ lag_spr_tp, 
                             family = binomial(link = "probit"), 
                             data = data_estim)
         
-        zk_tp_t <- glm(nber_rec ~ lag_spr + lag_tp + trend, 
+        zk_tp_t <- glm(nber_rec ~ lag_spr_tp + trend, 
                             family = binomial(link = "probit"), 
                             data = data_estim)
+        
+        zk_tp_t2 <- glm(nber_rec ~ lag_spr_tp + I(trend ^ 2), 
+                    family = binomial(link = "probit"), 
+                    data = data_estim)
         
         # forecasts
         df_fore <- rbind(df_fore,
-                           data.frame(fore_zk = round(predict(zk, data_eval, type = "response"), 3),
-                                      fore_zk_tp = round(predict(zk_tp, data_eval, type = "response"), 3),
-                                      fore_zk_tp_t = round(predict(zk_tp_t, data_eval, type = "response"), 3),
+                           data.frame(zk = round(predict(zk, data_eval, type = "response"), 3),
+                                      zk_tp = round(predict(zk_tp, data_eval, type = "response"), 3),
+                                      zk_tp_t = round(predict(zk_tp_t, data_eval, type = "response"), 3),
+                                      zk_tp_t2 = round(predict(zk_tp_t2, data_eval, type = "response"), 3),
                                       actual = data_eval$nber_rec,
                                       date = data_eval$date)
                            )
@@ -232,7 +287,7 @@ f_forecast_loop_probit <- function(data, eval_start, eval_end, freq, Nh){
 df_foreQ <- f_forecast_loop_probit(dataQ, eval_start, eval_end, "quarters", Nh_q)
 
 # plot predicted recession probabilites and recession shading
-df_foreQ %>% select(date, fore_zk, fore_zk_tp, fore_zk_tp_t) %>%
+df_foreQ %>% select(-actual) %>%
             gather(model, value, -date) %>% 
             ggplot()+
             geom_line(aes(x = date, y = value, group = model, col = model)) +
@@ -251,7 +306,7 @@ df_foreQ %>% select(date, fore_zk, fore_zk_tp, fore_zk_tp_t) %>%
 df_foreM <- f_forecast_loop_probit(dataM, eval_start, eval_end, "months", Nh_m)
 
 # plot predicted recession probabilites and recession shading
-df_foreM %>% select(date, fore_zk, fore_zk_tp, fore_zk_tp_t) %>%
+df_foreM %>% select(-actual) %>%
             gather(model, value, -date) %>% 
             ggplot()+
             geom_line(aes(x = date, y = value, group = model, col = model)) +
@@ -267,125 +322,41 @@ df_foreM %>% select(date, fore_zk, fore_zk_tp, fore_zk_tp_t) %>%
 
 # Evaluierung
 
-## Quartalsdaten
+## ROC-Kurve
 
-### ROC-Kurve
+### Quartalsdaten
 
 ```{r}
-roc_zk <- roc(df_foreQ, actual, fore_zk,
+roc_zk <- roc(df_foreQ, actual, zk,
               ret = c("roc", "coords", "all_coords"))
 
-roc_zk_tp <- roc(df_foreQ, actual, fore_zk_tp,
+roc_zk_tp <- roc(df_foreQ, actual, zk_tp,
                  ret = c("roc", "coords", "all_coords"))
 
-roc_zk_tp_t <- roc(df_foreQ, actual, fore_zk_tp_t,
+roc_zk_tp_t <- roc(df_foreQ, actual, zk_tp_t,
                    ret = c("roc", "coords", "all_coords"))
 
-ggroc(list(zk = roc_zk, zk_tp = roc_zk_tp, zk_tp_t = roc_zk_tp_t), legacy.axes = TRUE)
+roc_zk_tp_t2 <- roc(df_foreQ, actual, zk_tp_t2,
+                   ret = c("roc", "coords", "all_coords"))
+
+ggroc(list(zk = roc_zk, zk_tp = roc_zk_tp, zk_tp_t = roc_zk_tp_t, zk_tp_t2 = roc_zk_tp_t2), legacy.axes = TRUE)
 ```
 
-### Fläche unter der ROC-Kurve (AUC)
-
-| Modell | AUC |
-| ------ | --- | 
-| ZK | `r round(roc_zk$auc,2)` | 
-| ZK + TP | `r round(roc_zk_tp$auc,2)` | 
-| ZK + TP + trend| `r round(roc_zk_tp_t$auc,2)` | 
-
-### Schwellenwert des besten Modells?
-
-Bestes Modell = geringster Abstand zum Punkt (0,1)
+### Monatsdaten
 
 ```{r}
-x <- 1 - roc_zk$specificities
-y <- roc_zk$sensitivities
-
-dist <- sqrt((x - 0)^2 + (1-y)^2)
-#x[which.min(dist)]
-#y[which.min(dist)]
-thresh_roc_zk <- roc_zk$thresholds[which.min(dist)]
-
-x <- 1 - roc_zk_tp$specificities
-y <- roc_zk_tp$sensitivities
-
-dist <- sqrt((x - 0)^2 + (1-y)^2)
-#x[which.min(dist)]
-#y[which.min(dist)]
-thresh_roc_zk_tp <- roc_zk_tp$thresholds[which.min(dist)]
-
-x <- 1 - roc_zk_tp_t$specificities
-y <- roc_zk_tp_t$sensitivities
-
-dist <- sqrt((x - 0)^2 + (1-y)^2)
-#x[which.min(dist)]
-#y[which.min(dist)]
-thresh_roc_zk_tp_t <- roc_zk_tp_t$thresholds[which.min(dist)]
-```
-
-| Modell | Schwellenwert |
-| ------ | --- | 
-| ZK | `r round(thresh_roc_zk,3)` | 
-| ZK + TP | `r round(thresh_roc_zk_tp,3)` | 
-| ZK + TP + trend| `r round(thresh_roc_zk_tp_t,3)` | 
-
-## Monatsdaten
-
-### ROC-Kurve
-
-```{r}
-roc_zk <- roc(df_foreM, actual, fore_zk,
+roc_zk <- roc(df_foreM, actual, zk,
               ret = c("roc", "coords", "all_coords"))
 
-roc_zk_tp <- roc(df_foreM, actual, fore_zk_tp,
+roc_zk_tp <- roc(df_foreM, actual, zk_tp,
                  ret = c("roc", "coords", "all_coords"))
 
-roc_zk_tp_t <- roc(df_foreM, actual, fore_zk_tp_t,
+roc_zk_tp_t <- roc(df_foreM, actual, zk_tp_t,
                    ret = c("roc", "coords", "all_coords"))
 
-ggroc(list(zk = roc_zk, zk_tp = roc_zk_tp, zk_tp_t = roc_zk_tp_t), legacy.axes = TRUE)
+roc_zk_tp_t2 <- roc(df_foreM, actual, zk_tp_t2,
+                   ret = c("roc", "coords", "all_coords"))
+
+ggroc(list(zk = roc_zk, zk_tp = roc_zk_tp, zk_tp_t = roc_zk_tp_t, zk_tp_t2 = roc_zk_tp_t2), legacy.axes = TRUE)
 ```
-
-### AUC
-
-| Modell | AUC |
-| ------ | --- | 
-| ZK | `r round(roc_zk$auc,2)` | 
-| ZK + TP | `r round(roc_zk_tp$auc,2)` | 
-| ZK + TP + trend| `r round(roc_zk_tp_t$auc,2)` | 
-
-### Schwellenwert des besten Modells?
-
-Bestes Modell = geringster Abstand zum Punkt (0,1)
-
-```{r}
-x <- 1 - roc_zk$specificities
-y <- roc_zk$sensitivities
-
-dist <- sqrt((x - 0)^2 + (1-y)^2)
-#x[which.min(dist)]
-#y[which.min(dist)]
-thresh_roc_zk <- roc_zk$thresholds[which.min(dist)]
-
-x <- 1 - roc_zk_tp$specificities
-y <- roc_zk_tp$sensitivities
-
-dist <- sqrt((x - 0)^2 + (1-y)^2)
-#x[which.min(dist)]
-#y[which.min(dist)]
-thresh_roc_zk_tp <- roc_zk_tp$thresholds[which.min(dist)]
-
-x <- 1 - roc_zk_tp_t$specificities
-y <- roc_zk_tp_t$sensitivities
-
-dist <- sqrt((x - 0)^2 + (1-y)^2)
-#x[which.min(dist)]
-#y[which.min(dist)]
-thresh_roc_zk_tp_t <- roc_zk_tp_t$thresholds[which.min(dist)]
-```
-
-| Modell | Schwellenwert |
-| ------ | --- | 
-| ZK | `r round(thresh_roc_zk,3)` | 
-| ZK + TP | `r round(thresh_roc_zk_tp,3)` | 
-| ZK + TP + trend| `r round(thresh_roc_zk_tp_t,3)` | 
 
