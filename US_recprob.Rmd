@@ -34,11 +34,6 @@ library(pROC)
 fredr_set_key("84efd638e2db29ef758e0d8e081a4c05")
 ```
 
-
-# Motivation
-
-# Literatur
-
 # Daten
 
 ```{r}
