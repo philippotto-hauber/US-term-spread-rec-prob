@@ -353,6 +353,7 @@ roc_zk_tp_t <- roc(df_foreQ, actual, zk_tp_t,
 
 roc_zk_tp_t2 <- roc(df_foreQ, actual, zk_tp_t2,
                    ret = c("roc", "coords", "all_coords"))
+```
 
 ### Fläche unter der ROC-Kurve (AUC)
 
@@ -410,7 +411,7 @@ roc_zk_tp_t <- roc(df_foreM, actual, zk_tp_t,
 
 roc_zk_tp_t2 <- roc(df_foreM, actual, zk_tp_t2,
                    ret = c("roc", "coords", "all_coords"))
-
+```
 ### AUC
 
 | Modell | AUC |
@@ -426,7 +427,7 @@ Bestes Modell = geringster Abstand zum Punkt (0,1)
 ```{r}
 x0 <- 0
 y0 <- 1
-thresh_Q <- lapply(list(roc_zk = roc_zk, 
+thresh_M <- lapply(list(roc_zk = roc_zk, 
                        roc_zk_tp = roc_zk_tp,
                        roc_zk_tp_t = roc_zk_tp_t), 
                   calc_dist_to_point, 
@@ -435,7 +436,7 @@ thresh_Q <- lapply(list(roc_zk = roc_zk,
 
 | Modell | Schwellenwert |
 | ------ | --- | 
-| ZK | `r round(thresh_Q$roc_zk,3)` | 
-| ZK + TP | `r round(thresh_Q$roc_zk_tp,3)` | 
-| ZK + TP + trend| `r round(thresh_Q$roc_zk_tp_t,3)` | 
+| ZK | `r round(thresh_M$roc_zk,3)` | 
+| ZK + TP | `r round(thresh_M$roc_zk_tp,3)` | 
+| ZK + TP + trend| `r round(thresh_M$roc_zk_tp_t,3)` | 
 
