@@ -92,10 +92,24 @@ dataQ <- dataM %>% filter(variable %in% c("i10y", "i3m", "nber_rec", "tp_ny")) %
                    spread(variable, value) %>% 
                    mutate(spr = i10y - i3m, 
                           spr_tp = i10y - tp_ny - i3m,
-                          nber_rec2 = round(nber_rec, 0)) %>% 
+                          nber_rec_tmp = ceiling(nber_rec)) %>% 
                    select(-nber_rec) %>% 
-                   rename(nber_rec = nber_rec2) %>% 
+                   rename(nber_rec = nber_rec_tmp) %>% 
                    gather(variable, value, -date)
+
+# different recession definition t : t+3
+tmp <- dataQ %>% spread(variable, value) %>%
+                 select(date, nber_rec) %>%
+                 mutate(lead1 = lead(nber_rec, 1),
+                        lead2 = lead(nber_rec, 2),
+                        lead3 = lead(nber_rec, 3)
+                        )
+
+tmp2 <- as.matrix(select(tmp, -date))
+tmp3 <- matrix(0, nrow(tmp2), 1)
+tmp3[apply(tmp2 == 1, c(1), any)] <- 1
+
+dataQ <- rbind(dataQ, data.frame(variable = "nber_rec2", value = tmp3, date = tmp$date)) 
 
 # dataframe with start and end of recession => used for recession shading
 data_tmp <- dataM %>% filter(variable == "nber_rec") %>% 
@@ -149,25 +163,82 @@ dataM %>% filter(variable %in% c("tp_ny", "tp_board")) %>%
                   )
 ```
 
+
+```{r}
+Nh <- 4
+data_tmp <- 
+
+# add rows 
+data_add <- data.frame(date = seq(from = dataQ$date[nrow(dataQ)] %m+% months(3), 
+                                  by = "quarters", 
+                                  length.out = Nh
+                                  ),
+                       spr = rep(NA, Nh),
+                       tp_ny = rep(NA, Nh),
+                       nber_rec = rep(NA, Nh),
+                       nber_rec2 = rep(NA, Nh)
+                       )
+
+data_tmp <- dataQ %>% filter(variable %in% c("nber_rec", "nber_rec2", "spr", "tp_ny")) %>%
+                      spread(variable, value) %>%
+                      rbind(data_add) %>% 
+                      filter(date >= "1972-01-01") %>%
+                      mutate(lag_spr = lag(spr, Nh),
+                            lag_tp_ny = lag(tp_ny, Nh),
+                            trend = c(1 : n()),
+                            lag_spr_tp = lag_spr - lag_tp_ny)
+
+data_estim <- data_tmp %>% filter(date <= "2007-12-01")
+
+zk <- glm(nber_rec ~ lag_spr, 
+                family = binomial(link = "probit"), 
+                data = data_estim)
+zk_tp <- glm(nber_rec ~ lag_spr_tp, 
+                family = binomial(link = "probit"), 
+                data = data_estim)
+
+zk_tp_t <- glm(nber_rec ~ lag_spr_tp + trend, 
+                family = binomial(link = "probit"), 
+                data = data_estim)
+
+zk_tp_t2 <- glm(nber_rec ~ lag_spr_tp + I(trend ^ 2), 
+                family = binomial(link = "probit"), 
+                data = data_estim)
+
+data.frame(date = data_tmp$date, 
+           zk = predict(zk, data_tmp, type = "response"),
+           zk_tp = predict(zk_tp, data_tmp, type = "response"),
+           zk_tp_t = predict(zk_tp_t, data_tmp, type = "response"),
+           zk_tp_t2 = predict(zk_tp_t2, data_tmp, type = "response")
+           ) %>%
+    gather(model, value, -date) %>%
+    ggplot()+ 
+        geom_line(aes(x = date, y = value, group = model, color = model))+
+        theme_bw()+
+        geom_rect(data = filter(df_recQ, start >= "1972-01-01"),
+                  aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf),
+                  fill='grey', alpha=0.4
+                 )
+```
+
 # Schätzung
 
 ## Probit-Modelle
 
-Drei Spezifikationen
+Zwei Spezifikationen
 
 - **ZK** (Zinstrukturkurve)
-$$rec_{t+h} = \alpha_0 + \alpha_1 spread_{t} + e_t$$
+$$Pr(rec_{t+h} = 1 | \mathcal{I}_t) = \Phi(\alpha_0 + \alpha_1 \, spread_{t})$$
 
 -  **ZK_TP** (Zinsstrukturkurve + Laufzeitprämie)
-$$rec_{t+h} = \alpha_0 + \alpha_1 spread_{t} + \alpha_2 tp_t + e_t$$
-- **ZK_TP_t** (Zinstrukturkurve + Laufzeitprämie + Trend)
-$$rec_{t+h} = \alpha_0 + \alpha_1 spread_{t} + \alpha_2 tp_t + \alpha_3 t + e_t$$
+$$rec_{t+h} = \alpha_0 + \alpha_1 (spread_{t} - tp_t) + e_t$$
 
 ## Set-up
 
 ```{r, echo = TRUE}
-Nh <- 4 # forecast horizon
-sample_start <- "1962-01-01"
+Nh_q <- 4 # forecast horizon in quarters
+Nh_m <- 12 # forecast horizon in months
+sample_start <- "1972-01-01"
 eval_start <- "1985-01-01"
 eval_end <- "2017-10-01"
 ```
@@ -175,12 +246,12 @@ eval_end <- "2017-10-01"
 ## Ergebnisse
 
 ```{r}
-f_forecast_probit <- function(data, eval_start, eval_end, freq, Nh){
+f_forecast_loop_probit <- function(data, eval_start, eval_end, freq, Nh){
     df_fore <- data.frame()
 
     for (date_eval in seq(from = as.Date(eval_start), to = as.Date(eval_end), by = freq))  {
         # data 
-        data_tmp <- data %>% filter(variable %in% c("nber_rec", "spr", "spr_tp", "tp_ny"),
+        data_tmp <- data %>% filter(variable %in% c("nber_rec", "nber_rec2","spr", "spr_tp", "tp_ny"),
                                     date <= date_eval, date > sample_start) %>%
                                 select(date, variable, value) %>%
                                 spread(variable, value) %>%
@@ -198,19 +269,24 @@ f_forecast_probit <- function(data, eval_start, eval_end, freq, Nh){
                         family = binomial(link = "probit"), 
                         data = data_estim)
     
-        zk_tp <- glm(nber_rec ~ lag_spr + lag_tp, 
+        zk_tp <- glm(nber_rec ~ lag_spr_tp, 
                             family = binomial(link = "probit"), 
                             data = data_estim)
         
-        zk_tp_t <- glm(nber_rec ~ lag_spr + lag_tp + trend, 
+        zk_tp_t <- glm(nber_rec ~ lag_spr_tp + trend, 
                             family = binomial(link = "probit"), 
                             data = data_estim)
+        
+        zk_tp_t2 <- glm(nber_rec ~ lag_spr_tp + I(trend ^ 2), 
+                    family = binomial(link = "probit"), 
+                    data = data_estim)
         
         # forecasts
         df_fore <- rbind(df_fore,
-                           data.frame(fore_zk = round(predict(zk, data_eval, type = "response"), 3),
-                                      fore_zk_tp = round(predict(zk_tp, data_eval, type = "response"), 3),
-                                      fore_zk_tp_t = round(predict(zk_tp_t, data_eval, type = "response"), 3),
+                           data.frame(zk = round(predict(zk, data_eval, type = "response"), 3),
+                                      zk_tp = round(predict(zk_tp, data_eval, type = "response"), 3),
+                                      zk_tp_t = round(predict(zk_tp_t, data_eval, type = "response"), 3),
+                                      zk_tp_t2 = round(predict(zk_tp_t2, data_eval, type = "response"), 3),
                                       actual = data_eval$nber_rec,
                                       date = data_eval$date)
                            )
@@ -223,10 +299,10 @@ f_forecast_probit <- function(data, eval_start, eval_end, freq, Nh){
 ### Quartalsdaten
 
 ```{r}
-df_foreQ <- f_forecast_probit(dataQ, eval_start, eval_end, "quarters", 4)
+df_foreQ <- f_forecast_loop_probit(dataQ, eval_start, eval_end, "quarters", Nh_q)
 
 # plot predicted recession probabilites and recession shading
-df_foreQ %>% select(date, fore_zk, fore_zk_tp, fore_zk_tp_t) %>%
+df_foreQ %>% select(-actual) %>%
             gather(model, value, -date) %>% 
             ggplot()+
             geom_line(aes(x = date, y = value, group = model, col = model)) +
@@ -242,10 +318,10 @@ df_foreQ %>% select(date, fore_zk, fore_zk_tp, fore_zk_tp_t) %>%
 ## Monatsdaten
 
 ```{r}
-df_foreM <- f_forecast_probit(dataM, eval_start, eval_end, "months", 12)
+df_foreM <- f_forecast_loop_probit(dataM, eval_start, eval_end, "months", Nh_m)
 
 # plot predicted recession probabilites and recession shading
-df_foreM %>% select(date, fore_zk, fore_zk_tp, fore_zk_tp_t) %>%
+df_foreM %>% select(-actual) %>%
             gather(model, value, -date) %>% 
             ggplot()+
             geom_line(aes(x = date, y = value, group = model, col = model)) +
@@ -261,22 +337,22 @@ df_foreM %>% select(date, fore_zk, fore_zk_tp, fore_zk_tp_t) %>%
 
 # Evaluierung
 
-## Quartalsdaten
+## ROC-Kurve
 
-### ROC-Kurve
+### Quartalsdaten
 
 ```{r}
-roc_zk <- roc(df_foreQ, actual, fore_zk,
+roc_zk <- roc(df_foreQ, actual, zk,
               ret = c("roc", "coords", "all_coords"))
 
-roc_zk_tp <- roc(df_foreQ, actual, fore_zk_tp,
+roc_zk_tp <- roc(df_foreQ, actual, zk_tp,
                  ret = c("roc", "coords", "all_coords"))
 
-roc_zk_tp_t <- roc(df_foreQ, actual, fore_zk_tp_t,
+roc_zk_tp_t <- roc(df_foreQ, actual, zk_tp_t,
                    ret = c("roc", "coords", "all_coords"))
 
-ggroc(list(zk = roc_zk, zk_tp = roc_zk_tp, zk_tp_t = roc_zk_tp_t), legacy.axes = TRUE)
-```
+roc_zk_tp_t2 <- roc(df_foreQ, actual, zk_tp_t2,
+                   ret = c("roc", "coords", "all_coords"))
 
 ### Fläche unter der ROC-Kurve (AUC)
 
@@ -323,17 +399,17 @@ thresh_Q <- lapply(list(roc_zk = roc_zk,
 ### ROC-Kurve
 
 ```{r}
-roc_zk <- roc(df_foreM, actual, fore_zk,
+roc_zk <- roc(df_foreM, actual, zk,
               ret = c("roc", "coords", "all_coords"))
 
-roc_zk_tp <- roc(df_foreM, actual, fore_zk_tp,
+roc_zk_tp <- roc(df_foreM, actual, zk_tp,
                  ret = c("roc", "coords", "all_coords"))
 
-roc_zk_tp_t <- roc(df_foreM, actual, fore_zk_tp_t,
+roc_zk_tp_t <- roc(df_foreM, actual, zk_tp_t,
                    ret = c("roc", "coords", "all_coords"))
 
-ggroc(list(zk = roc_zk, zk_tp = roc_zk_tp, zk_tp_t = roc_zk_tp_t), legacy.axes = TRUE)
-```
+roc_zk_tp_t2 <- roc(df_foreM, actual, zk_tp_t2,
+                   ret = c("roc", "coords", "all_coords"))
 
 ### AUC
 
