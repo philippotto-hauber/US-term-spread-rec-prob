@@ -348,34 +348,18 @@ ggroc(list(zk = roc_zk, zk_tp = roc_zk_tp, zk_tp_t = roc_zk_tp_t), legacy.axes =
 Bestes Modell = geringster Abstand zum Punkt (0,1)
 
 ```{r}
-x <- 1 - roc_zk$specificities
-y <- roc_zk$sensitivities
-
-dist <- sqrt((x - 0)^2 + (1-y)^2)
-#x[which.min(dist)]
-#y[which.min(dist)]
-thresh_roc_zk <- roc_zk$thresholds[which.min(dist)]
-
-x <- 1 - roc_zk_tp$specificities
-y <- roc_zk_tp$sensitivities
-
-dist <- sqrt((x - 0)^2 + (1-y)^2)
-#x[which.min(dist)]
-#y[which.min(dist)]
-thresh_roc_zk_tp <- roc_zk_tp$thresholds[which.min(dist)]
-
-x <- 1 - roc_zk_tp_t$specificities
-y <- roc_zk_tp_t$sensitivities
-
-dist <- sqrt((x - 0)^2 + (1-y)^2)
-#x[which.min(dist)]
-#y[which.min(dist)]
-thresh_roc_zk_tp_t <- roc_zk_tp_t$thresholds[which.min(dist)]
+x0 <- 0
+y0 <- 1
+thresh_Q <- lapply(list(roc_zk = roc_zk, 
+                       roc_zk_tp = roc_zk_tp,
+                       roc_zk_tp_t = roc_zk_tp_t), 
+                  calc_dist_to_point, 
+                  x0 = x0, y0 = y0)
 ```
 
 | Modell | Schwellenwert |
 | ------ | --- | 
-| ZK | `r round(thresh_roc_zk,3)` | 
-| ZK + TP | `r round(thresh_roc_zk_tp,3)` | 
-| ZK + TP + trend| `r round(thresh_roc_zk_tp_t,3)` | 
+| ZK | `r round(thresh_Q$roc_zk,3)` | 
+| ZK + TP | `r round(thresh_Q$roc_zk_tp,3)` | 
+| ZK + TP + trend| `r round(thresh_Q$roc_zk_tp_t,3)` | 
 
