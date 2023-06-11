@@ -1,0 +1,3 @@
+*.html linguist-detectable=false
+*.rmd  linguist-detectable
+*.Rmd  linguist-detectable
